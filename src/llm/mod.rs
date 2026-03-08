@@ -297,32 +297,34 @@ fn create_ollama_from_registry(
 
 /// Create a cheap/fast LLM provider for lightweight tasks (heartbeat, routing, evaluation).
 ///
-/// Uses `NEARAI_CHEAP_MODEL` if set, otherwise falls back to the main provider.
-/// Currently only supports NEAR AI backend.
+/// Uses `LLM_CHEAP_MODEL` or `NEARAI_CHEAP_MODEL` (NEAR AI only). Works across all backends.
 pub fn create_cheap_llm_provider(
     config: &LlmConfig,
     session: Arc<SessionManager>,
 ) -> Result<Option<Arc<dyn LlmProvider>>, LlmError> {
-    let Some(ref cheap_model) = config.nearai.cheap_model else {
+    let Some(ref cheap_model) = config.cheap_model else {
         return Ok(None);
     };
 
-    if config.backend != "nearai" {
-        tracing::warn!(
-            "NEARAI_CHEAP_MODEL is set but LLM_BACKEND is '{}', not nearai. \
-             Cheap model setting will be ignored.",
-            config.backend
-        );
-        return Ok(None);
+    let is_nearai = config.backend == "nearai"
+        || config.backend == "near_ai"
+        || config.backend == "near";
+
+    if is_nearai {
+        let mut cheap_config = config.nearai.clone();
+        cheap_config.model = cheap_model.clone();
+        Ok(Some(Arc::new(NearAiChatProvider::new(
+            cheap_config,
+            session,
+        )?)))
+    } else if let Some(ref reg_config) = config.provider {
+        let mut cheap_reg_config = reg_config.clone();
+        cheap_reg_config.model = cheap_model.clone();
+        let cheap = create_registry_provider(&cheap_reg_config)?;
+        Ok(Some(cheap))
+    } else {
+        Ok(None)
     }
-
-    let mut cheap_config = config.nearai.clone();
-    cheap_config.model = cheap_model.clone();
-
-    Ok(Some(Arc::new(NearAiChatProvider::new(
-        cheap_config,
-        session,
-    )?)))
 }
 
 /// Build the full LLM provider chain with all configured wrappers.
@@ -369,15 +371,8 @@ pub fn build_provider_chain(
         llm
     };
 
-    // 2. Smart routing (cheap/primary split)
-    let llm: Arc<dyn LlmProvider> = if let Some(ref cheap_model) = config.nearai.cheap_model {
-        let mut cheap_config = config.nearai.clone();
-        cheap_config.model = cheap_model.clone();
-        let cheap = create_llm_provider_with_config(
-            &cheap_config,
-            session.clone(),
-            config.request_timeout_secs,
-        )?;
+    // 2. Smart routing (cheap/primary split) — works across all backends
+    let llm: Arc<dyn LlmProvider> = if let Some(cheap) = create_cheap_llm_provider(config, session.clone())? {
         let cheap: Arc<dyn LlmProvider> = if retry_config.max_retries > 0 {
             Arc::new(RetryProvider::new(cheap, retry_config.clone()))
         } else {
@@ -515,6 +510,7 @@ mod tests {
 
     fn test_llm_config() -> LlmConfig {
         LlmConfig {
+            cheap_model: None,
             backend: "nearai".to_string(),
             session: SessionConfig::default(),
             nearai: test_nearai_config(),
@@ -536,7 +532,7 @@ mod tests {
     #[test]
     fn test_create_cheap_llm_provider_creates_provider_when_configured() {
         let mut config = test_llm_config();
-        config.nearai.cheap_model = Some("cheap-test-model".to_string());
+        config.cheap_model = Some("cheap-test-model".to_string());
 
         let session = Arc::new(SessionManager::new(SessionConfig::default()));
         let result = create_cheap_llm_provider(&config, session);
@@ -548,15 +544,29 @@ mod tests {
     }
 
     #[test]
-    fn test_create_cheap_llm_provider_ignored_for_non_nearai_backend() {
+    fn test_create_cheap_llm_provider_creates_provider_for_registry_backend() {
+        use crate::config::RegistryProviderConfig;
+        use crate::llm::registry::ProviderProtocol;
+
         let mut config = test_llm_config();
-        config.backend = "openai".to_string();
-        config.nearai.cheap_model = Some("cheap-test-model".to_string());
+        config.cheap_model = Some("cheap-model".to_string());
+        config.backend = "openai_compatible".to_string();
+        config.provider = Some(RegistryProviderConfig {
+            protocol: ProviderProtocol::OpenAiCompletions,
+            provider_id: "openai_compatible".to_string(),
+            api_key: Some(secrecy::SecretString::from("test-key".to_string())),
+            base_url: "http://localhost:0".to_string(),
+            model: "primary-model".to_string(),
+            extra_headers: vec![],
+            oauth_token: None,
+        });
 
         let session = Arc::new(SessionManager::new(SessionConfig::default()));
         let result = create_cheap_llm_provider(&config, session);
 
         assert!(result.is_ok());
-        assert!(result.unwrap().is_none());
+        let provider = result.unwrap();
+        assert!(provider.is_some());
+        assert_eq!(provider.unwrap().model_name(), "cheap-model");
     }
 }

@@ -176,3 +176,18 @@ ironclaw onboard
 Select **"OpenAI-compatible"** for OpenRouter, Together AI, Fireworks, vLLM, LiteLLM,
 or LM Studio. You will be prompted for the base URL and (optionally) an API key.
 The model name is configured in the following step.
+
+---
+
+## Cheap Model (Smart Routing)
+
+Set `LLM_CHEAP_MODEL` to use a cheaper/faster model for simple tasks and heartbeat.
+Works across **all backends** (NEAR AI, OpenAI, Ollama, OpenRouter, etc.):
+
+```env
+LLM_CHEAP_MODEL=qwen/qwen2.5-7b-instruct   # OpenRouter
+LLM_CHEAP_MODEL=gpt-4o-mini                # OpenAI
+LLM_CHEAP_MODEL=llama3.2:7b                # Ollama
+```
+
+For NEAR AI, `NEARAI_CHEAP_MODEL` also works (backward compatible).

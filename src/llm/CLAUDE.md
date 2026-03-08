@@ -132,7 +132,7 @@ Set `LLM_EXTRA_HEADERS=Key:Value,Key2:Value2` to inject headers into every reque
 ```
 Raw provider
   → RetryProvider           (per-provider backoff; wraps both primary and fallback)
-  → SmartRoutingProvider    (cheap/primary split when NEARAI_CHEAP_MODEL is set)
+  → SmartRoutingProvider    (cheap/primary split when LLM_CHEAP_MODEL or NEARAI_CHEAP_MODEL is set)
   → FailoverProvider        (fallback model; only when NEARAI_FALLBACK_MODEL is set)
   → CircuitBreakerProvider  (fast-fail; only when NEARAI_CIRCUIT_BREAKER_THRESHOLD is set)
   → CachedProvider          (response cache; only when NEARAI_RESPONSE_CACHE_ENABLED=true)
@@ -140,6 +140,8 @@ Raw provider
 ```
 
 `build_provider_chain()` also returns a separate standalone cheap LLM provider (for heartbeat/evaluation tasks — not part of the decorator chain).
+
+**Cheap model routing (all backends):** Set `LLM_CHEAP_MODEL` or `NEARAI_CHEAP_MODEL` (NEAR AI only) to enable smart routing. The cheap model is used for simple tasks (greetings, quick lookups), heartbeat, and evaluation. Works with NEAR AI, OpenAI-compatible, Ollama, Anthropic, etc.
 
 ## reasoning.rs Contents
 

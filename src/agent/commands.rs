@@ -344,7 +344,7 @@ impl Agent {
             crate::agent::HeartbeatConfig::default(),
             crate::workspace::hygiene::HygieneConfig::default(),
             workspace.clone(),
-            self.llm().clone(),
+            self.cheap_llm().clone(),
         );
 
         match runner.check_heartbeat().await {

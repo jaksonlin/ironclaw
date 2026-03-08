@@ -1473,6 +1473,7 @@ impl SetupWizard {
             .unwrap_or_else(|_| "https://private.near.ai".to_string());
 
         let config = LlmConfig {
+            cheap_model: None,
             backend: "nearai".to_string(),
             session: crate::llm::session::SessionConfig {
                 auth_base_url,

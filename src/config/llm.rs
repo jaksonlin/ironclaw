@@ -93,6 +93,9 @@ pub struct RegistryProviderConfig {
 /// a generic `RegistryProviderConfig`.
 #[derive(Debug, Clone)]
 pub struct LlmConfig {
+    /// Cheap/fast model for lightweight tasks (heartbeat, routing, evaluation).
+    /// Works across all backends. Resolved from `LLM_CHEAP_MODEL` or `NEARAI_CHEAP_MODEL`.
+    pub cheap_model: Option<String>,
     /// Backend identifier (e.g., "nearai", "openai", "groq", "tinfoil").
     pub backend: String,
     /// Session manager configuration (auth URL, token persistence path).
@@ -147,6 +150,7 @@ impl LlmConfig {
     #[cfg(feature = "libsql")]
     pub fn for_testing() -> Self {
         Self {
+            cheap_model: None,
             backend: "nearai".to_string(),
             session: SessionConfig {
                 auth_base_url: "http://localhost:0".to_string(),
@@ -261,7 +265,12 @@ impl LlmConfig {
 
         let request_timeout_secs = parse_optional_env("LLM_REQUEST_TIMEOUT_SECS", 120)?;
 
+        // Cheap model: LLM_CHEAP_MODEL (universal) or NEARAI_CHEAP_MODEL (backward compat)
+        let cheap_model = optional_env("LLM_CHEAP_MODEL")?
+            .or_else(|| optional_env("NEARAI_CHEAP_MODEL").ok().flatten());
+
         Ok(Self {
+            cheap_model,
             backend: if is_nearai {
                 "nearai".to_string()
             } else if let Some(ref p) = provider {
